@@ -1,0 +1,8 @@
+[Unit]
+Description=Archive old logs when /LOGS is over threshold
+After=logs-mount.service
+Requires=logs-mount.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/logs_guard.sh
