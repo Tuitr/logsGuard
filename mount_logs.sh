@@ -1,38 +1,32 @@
 #!/bin/bash
-IMAGE="${IMAGE:-/var/lib/logs.img}"       # файл-образ, наша «флешка»
-MOUNT_POINT="${MOUNT_POINT:-/LOGS}"       # куда её подключаем
-IMAGE_SIZE="${IMAGE_SIZE:-200M}"          # размер образа, если его нужно создать
-COMPONENTS="auth_service data_process_service system_event_handler_service"   
-
-if [ "$EUID" -ne 0 ]; then
-    echo "ОШИБКА: запустите через sudo" >&2
-    exit 1
-fi
-
-#если смонтировано - монтируем
-if mountpoint -q "$MOUNT_POINT"; then
-    echo "$MOUNT_POINT уже смонтирован"
-else
-    # если образа нет — создать и отформатировать
-    if [ ! -f "$IMAGE" ]; then
-        echo "Образ $IMAGE не найден — создаю ($IMAGE_SIZE)"
-        if ! truncate -s "$IMAGE_SIZE" "$IMAGE" || ! mkfs.ext4 -q -L LOGS "$IMAGE"; then
-            echo "ОШИБКА: не удалось создать образ" >&2
-            exit 2
+set -euo pipefail
+IMAGE=${IMAGE-/var/lib/logs.img}
+MOUNT_POINT=${MOUNT_POINT-/LOGS}
+IMAGE_SIZE=${IMAGE_SIZE-200M}
+LOGS_UUID=${LOGS_UUID-}
+trap 'echo "ОШИБКА: подготовка или монтирование LOGS не выполнены" >&2' ERR
+if (( EUID != 0 )); then echo 'ОШИБКА: требуются права root' >&2; exit 1; fi
+for cmd in mountpoint mkdir mount df; do command -v "$cmd" >/dev/null; done
+if ! mountpoint -q -- "$MOUNT_POINT"; then
+    mkdir -p -- "$MOUNT_POINT"
+    if [[ -n $LOGS_UUID ]]; then
+        [[ $LOGS_UUID =~ ^[a-zA-Z0-9-]+$ ]] || { echo 'Некорректный UUID' >&2; exit 2; }
+        # A preformatted real partition is NEVER formatted here.
+        mount -U "$LOGS_UUID" -- "$MOUNT_POINT"
+    else
+        if [[ ! -e $IMAGE ]]; then
+            command -v mkfs.ext4 >/dev/null
+            # noclobber protects existing files; format only our newly created image.
+            (set -C; : > "$IMAGE")
+            truncate -s "$IMAGE_SIZE" -- "$IMAGE"
+            mkfs.ext4 -q -- "$IMAGE"
         fi
+        [[ -f $IMAGE && ! -L $IMAGE ]]
+        mount -o loop -- "$IMAGE" "$MOUNT_POINT"
     fi
-    mkdir -p "$MOUNT_POINT"
-    if ! mount -o loop "$IMAGE" "$MOUNT_POINT"; then
-        echo "ОШИБКА: не удалось смонтировать" >&2
-        exit 2
-    fi
-    echo "Смонтировал $IMAGE в $MOUNT_POINT"
 fi
-
-#создать папки компонент (работает всегда)
-for c in $COMPONENTS; do
-	mkdir -p "$MOUNT_POINT/$c"
+for c in auth_service data_process_service system_event_handler_service; do
+    [[ ! -L $MOUNT_POINT/$c ]]
+    mkdir -p -- "$MOUNT_POINT/$c"
 done
-
-#показать результат
-df -h "$MOUNT_POINT"
+df -h -- "$MOUNT_POINT"
