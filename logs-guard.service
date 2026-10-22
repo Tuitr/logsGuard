@@ -5,4 +5,5 @@ Requires=logs-mount.service
 
 [Service]
 Type=oneshot
+EnvironmentFile=-/etc/default/logs-guard
 ExecStart=/usr/local/sbin/logs_guard.sh

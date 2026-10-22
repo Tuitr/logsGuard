@@ -4,6 +4,7 @@ After=local-fs.target
 
 [Service]
 Type=oneshot
+EnvironmentFile=-/etc/default/logs-guard
 RemainAfterExit=yes
 ExecStart=/usr/local/sbin/mount_logs.sh
 
